@@ -54,12 +54,39 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async jwt({ token, account, profile }) {
-      if (account?.access_token) token.accessToken = account.access_token;
+      if (account?.access_token) {
+        token.accessToken = account.access_token;
+        token.accessTokenValidatedAt = Date.now();
+      }
       if (profile) {
         const p = profile as { id: number; login: string };
         token.githubId = String(p.id);
         token.githubLogin = p.login;
       }
+
+      const validatedAt =
+        typeof token.accessTokenValidatedAt === "number"
+          ? token.accessTokenValidatedAt
+          : 0;
+      const VALIDATION_INTERVAL = 24 * 60 * 60 * 1000;
+
+      if (token.accessToken && Date.now() - validatedAt > VALIDATION_INTERVAL) {
+        try {
+          const res = await fetch("https://api.github.com/user", {
+            headers: { Authorization: `Bearer ${token.accessToken}` },
+            cache: "no-store",
+          });
+          if (res.status === 401) {
+            token.error = "TokenRevoked";
+          } else if (res.ok) {
+            token.accessTokenValidatedAt = Date.now();
+            delete token.error;
+          }
+        } catch {
+          // Network error: preserve session, do not mark token as invalid
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -69,6 +96,8 @@ export const authOptions: NextAuthOptions = {
         session.githubId = token.githubId;
       if (typeof token.githubLogin === "string")
         session.githubLogin = token.githubLogin;
+      if (typeof token.error === "string")
+        session.error = token.error;
       return session;
     },
   },
