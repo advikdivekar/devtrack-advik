@@ -119,8 +119,8 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!body.title || typeof body.target !== "number" || body.target <= 0) {
-    return Response.json({ error: "title and positive target required" }, { status: 400 });
+  if (typeof body !== "object" || body === null) {
+    return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
 
   const { title, target, unit, recurrence } = body as Record<string, unknown>;
