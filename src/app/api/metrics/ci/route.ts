@@ -9,6 +9,7 @@ import {
 import { GITHUB_API } from "@/lib/github";
 import { supabaseAdmin } from "@/lib/supabase";
 import { resolveAppUser } from "@/lib/resolve-user";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -210,7 +211,8 @@ async function fetchCIAnalyticsForAccount(
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!accessToken || !session?.githubLogin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -219,7 +221,7 @@ export async function GET(req: NextRequest) {
   if (!accountId) {
     try {
       const result = await fetchCIAnalyticsForAccount(
-        session.accessToken,
+        accessToken,
         session.githubLogin
       );
       return Response.json(result);
@@ -241,7 +243,7 @@ export async function GET(req: NextRequest) {
   if (accountId === "combined") {
     const accounts = await getAllAccounts(
       {
-        token: session.accessToken,
+        token: accessToken,
         githubId: session.githubId,
         githubLogin: session.githubLogin,
       },
@@ -264,7 +266,7 @@ export async function GET(req: NextRequest) {
   if (accountId === session.githubId) {
     try {
       const result = await fetchCIAnalyticsForAccount(
-        session.accessToken,
+        accessToken,
         session.githubLogin
       );
       return Response.json(result);

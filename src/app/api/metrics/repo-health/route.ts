@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { computeHealthScore } from "@/lib/repo-health";
 import type { RepoHealthResponse, RepoHealthSignals, RepoHealthScore } from "@/types/repo-health";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -167,7 +168,8 @@ async function fetchSignalsForRepo(
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!accessToken || !session?.githubLogin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -180,7 +182,7 @@ export async function GET(req: NextRequest) {
   // 1) Determine top repos (top 6 by commit count).
   let topRepos: RepoSummary[] = [];
   try {
-    topRepos = (await fetchReposForAccount(session.accessToken, session.githubLogin, days)).repos;
+    topRepos = (await fetchReposForAccount(accessToken, session.githubLogin, days)).repos;
   } catch {
     return Response.json({ error: "GitHub API error" }, { status: 502 });
   }
@@ -190,7 +192,7 @@ export async function GET(req: NextRequest) {
   // 2) Fetch per-repo signals sequentially to preserve rate limits.
   for (const repo of topRepos) {
     try {
-      const signals = await fetchSignalsForRepo(session.accessToken, repo.name, days);
+      const signals = await fetchSignalsForRepo(accessToken, repo.name, days);
       scores.push(computeHealthScore(repo.name, signals));
     } catch {
       // Skip repo on any failure.

@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ function toDateStr(d: Date): string {
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!accessToken || !session?.githubLogin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -40,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   // 1. Verify user exists
   const userRes = await fetch(`${GITHUB_API}/users/${username}`, {
-    headers: { Authorization: `Bearer ${session.accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     next: { revalidate: 3600 },
   });
 
@@ -53,7 +55,7 @@ export async function GET(req: NextRequest) {
   const since90 = new Date();
   since90.setDate(since90.getDate() - 90);
   const since90Str = since90.toISOString().slice(0, 10);
-  
+
   const since30 = new Date();
   since30.setDate(since30.getDate() - 30);
   const since30Str = since30.toISOString().slice(0, 10);
@@ -62,7 +64,7 @@ export async function GET(req: NextRequest) {
     `${GITHUB_API}/search/commits?q=author:${username}+author-date:>=${since90Str}&per_page=100&sort=author-date&order=desc`,
     {
       headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         Accept: "application/vnd.github+json",
       },
       next: { revalidate: 3600 },
@@ -111,7 +113,7 @@ export async function GET(req: NextRequest) {
 
   // 3. Top Language from repos
   const reposRes = await fetch(`${GITHUB_API}/users/${username}/repos?per_page=100&sort=pushed`, {
-    headers: { Authorization: `Bearer ${session.accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     next: { revalidate: 3600 },
   });
   
@@ -131,7 +133,7 @@ export async function GET(req: NextRequest) {
   const prsRes = await fetch(
     `${GITHUB_API}/search/issues?q=type:pr+author:${username}&per_page=1`,
     {
-      headers: { Authorization: `Bearer ${session.accessToken}` },
+      headers: { Authorization: `Bearer ${accessToken}` },
       next: { revalidate: 3600 },
     }
   );
