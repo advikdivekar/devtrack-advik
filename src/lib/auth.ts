@@ -52,8 +52,9 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      if (typeof token.accessToken === "string")
-        session.accessToken = token.accessToken;
+      // accessToken is intentionally NOT copied here — it must never be sent
+      // to the browser via /api/auth/session. Retrieve it server-side only
+      // using getGitHubAccessToken(req) from @/lib/server-github-token.
       if (typeof token.githubId === "string")
         session.githubId = token.githubId;
       if (typeof token.githubLogin === "string")

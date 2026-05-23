@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { GITHUB_API } from "@/lib/github";
 import { isMetricsCacheBypassed, metricsCacheKey, withMetricsCache } from "@/lib/metrics-cache";
 import { dateDiffDays, toDateStr } from "@/lib/dateUtils";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ function calculateCurrentStreak(activeDates: Set<string>): number {
 
   for (let i = 1; i < commitDays.length; i++) {
     const diff = dateDiffDays(commitDays[i - 1], commitDays[i]);
-    if (diff === 1) { currentRun++; } 
+    if (diff === 1) { currentRun++; }
     else { runs.push({ end: commitDays[i - 1], length: currentRun }); currentRun = 1; }
   }
   runs.push({ end: commitDays[commitDays.length - 1], length: currentRun });
@@ -65,7 +66,10 @@ async function fetchActiveDates(githubLogin: string, token: string): Promise<Set
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const accessToken = await getGitHubAccessToken(req);
+  if (!session?.githubLogin || !accessToken) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const bypass = isMetricsCacheBypassed(req);
   const key = metricsCacheKey(session.githubId ?? session.githubLogin, "weekly-summary" as any);
@@ -79,9 +83,9 @@ export async function GET(req: NextRequest) {
 
       const commitsRes = await fetch(
         `${GITHUB_API}/search/commits?q=author:${session.githubLogin}+author-date:>=${fourteenDaysAgoStr}&per_page=100`,
-        { headers: { Authorization: `Bearer ${session.accessToken}`, Accept: "application/vnd.github+json" }, cache: "no-store" }
+        { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" }, cache: "no-store" }
       );
-const commitsData = (await commitsRes.json()) as {
+      const commitsData = (await commitsRes.json()) as {
         items: Array<{
           commit: { author: { date: string } };
           repository: { full_name: string };
@@ -122,7 +126,7 @@ const commitsData = (await commitsRes.json()) as {
         `${GITHUB_API}/search/issues?q=type:pr+author:@me+created:>=${fourteenDaysAgoStr}&per_page=100`,
         {
           headers: {
-            Authorization: `Bearer ${session.accessToken}`,
+            Authorization: `Bearer ${accessToken}`,
             Accept: "application/vnd.github+json",
           },
           cache: "no-store",
@@ -162,7 +166,7 @@ const commitsData = (await commitsRes.json()) as {
         }
       }
 
-      const streakDates = await fetchActiveDates(session.githubLogin!, session.accessToken!);
+      const streakDates = await fetchActiveDates(session.githubLogin!, accessToken);
       const commitDelta = commitsThisWeek - commitsPrevWeek;
 
       return {

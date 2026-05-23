@@ -1,6 +1,7 @@
 const GITHUB_USERNAME_RE = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
 
-export function isValidGitHubUsername(username: string): boolean {
+export function isValidGitHubUsername(username: unknown): username is string {
+  if (typeof username !== "string") return false;
   return GITHUB_USERNAME_RE.test(username);
 }
 

@@ -2,23 +2,34 @@ import { getServerSession } from "next-auth";
 import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { isMetricsCacheBypassed, metricsCacheKey, withMetricsCache } from "@/lib/metrics-cache";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 const GITHUB_API = "https://api.github.com";
 
+interface RepoItem {
+  repository: { full_name: string };
+}
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const accessToken = await getGitHubAccessToken(req);
+  if (!session?.githubLogin || !accessToken) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const bypass = isMetricsCacheBypassed(req);
   const key = metricsCacheKey(session.githubId ?? session.githubLogin, "languages" as any);
 
   try {
     const data = await withMetricsCache({ bypass, key, ttlSeconds: 10 * 60 }, async () => {
-      const headers = { Authorization: `Bearer ${session.accessToken}`, Accept: "application/vnd.github+json" };
+      const headers = {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+      };
       const since = new Date();
       since.setDate(since.getDate() - 90);
-      
+
       const searchRes = await fetch(
         `${GITHUB_API}/search/commits?q=author:${session.githubLogin}+author-date:>=${since.toISOString().slice(0, 10)}&per_page=100&sort=author-date&order=desc`,
         { headers, cache: "no-store" }
@@ -26,7 +37,7 @@ export async function GET(req: NextRequest) {
       if (!searchRes.ok) throw new Error("API Error");
 
       const raw = await searchRes.json();
-      const repoNames = Array.from(new Set<string>(raw.items.map((i: any) => i.repository.full_name)));
+      const repoNames = Array.from(new Set<string>(raw.items.map((i: RepoItem) => i.repository.full_name)));
       const langTotals: Record<string, number> = {};
 
       await Promise.all(
