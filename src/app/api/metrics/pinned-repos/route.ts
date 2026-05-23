@@ -1,5 +1,7 @@
 import { getServerSession } from "next-auth";
+import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +36,10 @@ const PINNED_REPOS_QUERY = `
   }
 `;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!session?.githubId || !accessToken) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -45,7 +48,7 @@ export async function GET() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${session.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ query: PINNED_REPOS_QUERY }),
       cache: "no-store",

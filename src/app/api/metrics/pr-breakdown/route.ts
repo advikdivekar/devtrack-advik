@@ -1,5 +1,7 @@
 import { getServerSession } from "next-auth";
+import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +15,10 @@ interface PRItem {
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!session?.githubId || !accessToken) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -23,7 +26,7 @@ export async function GET() {
     `${GITHUB_API}/search/issues?q=type:pr+author:@me&per_page=100`,
     {
       headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         Accept: "application/vnd.github+json",
       },
       cache: "no-store",

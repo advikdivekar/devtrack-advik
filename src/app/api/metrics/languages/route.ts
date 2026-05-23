@@ -1,5 +1,7 @@
 import { getServerSession } from "next-auth";
+import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -9,14 +11,15 @@ interface RepoItem {
   repository: { full_name: string };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!session?.githubLogin || !accessToken) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const headers = {
-    Authorization: `Bearer ${session.accessToken}`,
+    Authorization: `Bearer ${accessToken}`,
     Accept: "application/vnd.github+json",
   };
 

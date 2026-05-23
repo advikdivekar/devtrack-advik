@@ -1,6 +1,8 @@
 import { getServerSession } from "next-auth";
+import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { GITHUB_API } from "@/lib/github";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -95,9 +97,10 @@ async function fetchActiveDates(
   return activeDates;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!session?.githubLogin || !accessToken) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -112,7 +115,7 @@ export async function GET() {
       `${GITHUB_API}/search/commits?q=author:${session.githubLogin}+author-date:>=${fourteenDaysAgoStr}&per_page=100`,
       {
         headers: {
-          Authorization: `Bearer ${session.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           Accept: "application/vnd.github.cloak-preview+json",
         },
         cache: "no-store",
@@ -162,7 +165,7 @@ export async function GET() {
       `${GITHUB_API}/search/issues?q=type:pr+author:@me+created:>=${fourteenDaysAgoStr}&per_page=100`,
       {
         headers: {
-          Authorization: `Bearer ${session.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           Accept: "application/vnd.github+json",
         },
         cache: "no-store",
@@ -197,7 +200,7 @@ export async function GET() {
 
     const streakDates = await fetchActiveDates(
       session.githubLogin,
-      session.accessToken
+      accessToken
     );
     const currentStreak = calculateCurrentStreak(streakDates);
     const commitDelta = commitsThisWeek - commitsPrevWeek;
