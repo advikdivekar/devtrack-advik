@@ -12,6 +12,7 @@ import {
 import { supabaseAdmin } from "@/lib/supabase";
 import { resolveAppUser } from "@/lib/resolve-user";
 import { dateDiffDays, toDateStr } from "@/lib/dateUtils";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -138,7 +139,8 @@ function calculateStreakFromDates(
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin || !session.githubId) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!accessToken || !session?.githubLogin || !session.githubId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -176,7 +178,7 @@ export async function GET(req: NextRequest) {
     try {
       const activeDates = await fetchActiveDates(
         session.githubLogin,
-        session.accessToken,
+        accessToken,
         { bypass, userId: session.githubId }
       );
       return Response.json(
@@ -194,7 +196,7 @@ export async function GET(req: NextRequest) {
   if (accountId === "combined") {
     const accounts = await getAllAccounts(
       {
-        token: session.accessToken,
+        token: accessToken,
         githubId: session.githubId,
         githubLogin: session.githubLogin,
       },
@@ -220,7 +222,7 @@ export async function GET(req: NextRequest) {
     return Response.json(calculateStreakFromDates(unifiedDates, freezeDates));
   }
 
-  let resolvedToken = session.accessToken;
+  let resolvedToken = accessToken;
   let resolvedLogin = session.githubLogin;
 
   if (accountId !== session.githubId) {

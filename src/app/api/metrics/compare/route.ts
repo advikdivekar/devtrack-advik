@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { dateDiffDays, toDateStr } from "@/lib/dateUtils";
 import { normalizeGitHubUsername } from "@/lib/validate-github-username";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,8 @@ const GITHUB_API = "https://api.github.com";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!accessToken || !session?.githubLogin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -37,7 +39,7 @@ export async function GET(req: NextRequest) {
 
   // 1. Verify user exists
   const userRes = await fetch(`${GITHUB_API}/users/${encodedUsername}`, {
-    headers: { Authorization: `Bearer ${session.accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
 
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest) {
   const since90 = new Date();
   since90.setDate(since90.getDate() - 90);
   const since90Str = since90.toISOString().slice(0, 10);
-  
+
   const since30 = new Date();
   since30.setDate(since30.getDate() - 30);
   const since30Str = since30.toISOString().slice(0, 10);
@@ -66,7 +68,7 @@ export async function GET(req: NextRequest) {
 
   const commitsRes = await fetch(commitsUrl.toString(), {
     headers: {
-      Authorization: `Bearer ${session.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       Accept: "application/vnd.github+json",
     },
     cache: "no-store",
@@ -75,11 +77,11 @@ export async function GET(req: NextRequest) {
   let streak = 0;
   let commits30d = 0;
   let topLanguage = "Unknown";
-  
+
   if (commitsRes.ok) {
     const commitsData = await commitsRes.json();
     const items = commitsData.items || [];
-    
+
     const daySet: Record<string, true> = {};
     for (const item of items) {
       const dateStr = item.commit.author.date.slice(0, 10);
@@ -89,22 +91,20 @@ export async function GET(req: NextRequest) {
       }
     }
     const commitDays = Object.keys(daySet).sort();
-    
+
     if (commitDays.length > 0) {
       let currentRun = 1;
-      let runs: { end: string; length: number }[] = [];
-      let runStart = commitDays[0];
+      const runs: { end: string; length: number }[] = [];
       for (let i = 1; i < commitDays.length; i++) {
         if (dateDiffDays(commitDays[i - 1], commitDays[i]) === 1) {
           currentRun++;
         } else {
           runs.push({ end: commitDays[i - 1], length: currentRun });
-          runStart = commitDays[i];
           currentRun = 1;
         }
       }
       runs.push({ end: commitDays[commitDays.length - 1], length: currentRun });
-      
+
       const today = toDateStr(new Date());
       const yesterday = toDateStr(new Date(Date.now() - 86400000));
       const lastRun = runs[runs.length - 1];
@@ -118,10 +118,10 @@ export async function GET(req: NextRequest) {
   reposUrl.searchParams.set("sort", "pushed");
 
   const reposRes = await fetch(reposUrl.toString(), {
-    headers: { Authorization: `Bearer ${session.accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  
+
   if (reposRes.ok) {
     const reposData = await reposRes.json();
     const langCounts: Record<string, number> = {};
@@ -140,7 +140,7 @@ export async function GET(req: NextRequest) {
   prsUrl.searchParams.set("per_page", "1");
 
   const prsRes = await fetch(prsUrl.toString(), {
-    headers: { Authorization: `Bearer ${session.accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
   let prs = 0;
@@ -154,6 +154,6 @@ export async function GET(req: NextRequest) {
     streak,
     commits30d,
     topLanguage,
-    prs
+    prs,
   });
 }

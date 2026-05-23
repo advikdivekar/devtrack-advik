@@ -6,6 +6,7 @@ import { GITHUB_API } from "@/lib/github";
 import { supabaseAdmin } from "@/lib/supabase";
 import { resolveAppUser } from "@/lib/resolve-user";
 import { isMetricsCacheBypassed, metricsCacheKey, withMetricsCache } from "@/lib/metrics-cache";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ async function fetchCIAnalyticsForAccount(token: string, githubLogin: string): P
   const searchRes = await fetch(`${GITHUB_API}/search/commits?q=author:${githubLogin}+author-date:>=${toIsoDate(30)}&per_page=100&sort=author-date&order=desc`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" }, cache: "no-store" });
   if (!searchRes.ok) throw new Error("API error");
   const data = await searchRes.json();
-  
+
   const repoMap = new Map<string, number>();
   for (const item of data.items) { const n = item.repository.full_name; repoMap.set(n, (repoMap.get(n) ?? 0) + 1); }
   const repos = Array.from(repoMap.entries()).map(([name, commits]) => ({ name, commits })).sort((a, b) => b.commits - a.commits).slice(0, 5);
@@ -58,7 +59,10 @@ async function fetchCIAnalyticsForAccount(token: string, githubLogin: string): P
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const accessToken = await getGitHubAccessToken(req);
+  if (!accessToken || !session?.githubLogin) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const accountId = req.nextUrl.searchParams.get("accountId");
   const bypass = isMetricsCacheBypassed(req);
@@ -66,20 +70,20 @@ export async function GET(req: NextRequest) {
 
   try {
     const data = await withMetricsCache({ bypass, key, ttlSeconds: 10 * 60 }, async () => {
-      if (!accountId) return await fetchCIAnalyticsForAccount(session.accessToken!, session.githubLogin!);
-      
+      if (!accountId) return await fetchCIAnalyticsForAccount(accessToken, session.githubLogin!);
+
       const userRow = await resolveAppUser(session.githubId!, session.githubLogin!);
       if (!userRow) throw new Error("User not found");
 
       if (accountId === "combined") {
-        const accounts = await getAllAccounts({ token: session.accessToken!, githubId: session.githubId!, githubLogin: session.githubLogin! }, userRow.id);
+        const accounts = await getAllAccounts({ token: accessToken, githubId: session.githubId!, githubLogin: session.githubLogin! }, userRow.id);
         const results = await Promise.allSettled(accounts.map((a) => fetchCIAnalyticsForAccount(a.token, a.githubLogin)));
         const merged = mergeMetrics(results, mergeCIAnalytics);
         if (!merged) throw new Error("Merge failed");
         return merged;
       }
 
-      if (accountId === session.githubId) return await fetchCIAnalyticsForAccount(session.accessToken!, session.githubLogin!);
+      if (accountId === session.githubId) return await fetchCIAnalyticsForAccount(accessToken, session.githubLogin!);
 
       const accountToken = await getAccountToken(userRow.id, accountId);
       if (!accountToken) throw new Error("Token missing");
