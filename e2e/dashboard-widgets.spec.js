@@ -65,6 +65,13 @@ test.beforeEach(async ({ page }) => {
     });
   });
 
+  await page.route("**/api/goals/sync", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ updated: 0, commitCount: 0 }),
+    });
+  });
+
   await page.route("**/api/goals", async (route) => {
     if (route.request().method() === "POST") {
       await route.fulfill({
@@ -87,6 +94,7 @@ test.beforeEach(async ({ page }) => {
             unit: "commits",
             recurrence: "weekly",
             period_start: "2026-05-18",
+            last_synced_at: new Date().toISOString(),
           },
         ],
       }),
