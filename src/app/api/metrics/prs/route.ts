@@ -471,13 +471,13 @@ export async function GET(req: NextRequest) {
   }
 
   const gitlabToken =
-    typeof session.gitlabToken === "string" ? session.gitlabToken : undefined;
+    typeof session?.gitlabToken === "string" ? session.gitlabToken : undefined;
 
   const accountId = req.nextUrl.searchParams.get("accountId");
   const bypass = isMetricsCacheBypassed(req);
   const gitlabCacheContext = {
     bypass,
-    userId: session.githubId ?? session.githubLogin ?? "primary",
+    userId: session?.githubId ?? session?.githubLogin ?? "primary",
   };
 
   if (!accountId) {
