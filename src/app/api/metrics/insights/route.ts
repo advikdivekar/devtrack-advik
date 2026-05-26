@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 import {
   getAccountToken,
   getAllAccounts,
@@ -216,8 +217,9 @@ function mergeAccountResults(results: PromiseSettledResult<DeveloperSignals>[]) 
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
+  const accessToken = await getGitHubAccessToken(req);
 
-  if (!session?.accessToken || !session.githubLogin) {
+  if (!accessToken || !session?.githubLogin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -226,7 +228,7 @@ export async function GET(req: NextRequest) {
 
   if (!accountId) {
     try {
-      const result = await fetchAccountSignals(session.accessToken, session.githubLogin, {
+      const result = await fetchAccountSignals(accessToken, session.githubLogin, {
         bypass,
         userId: session.githubId ?? session.githubLogin,
       });
@@ -250,7 +252,7 @@ export async function GET(req: NextRequest) {
   if (accountId === "combined") {
     const accounts = await getAllAccounts(
       {
-        token: session.accessToken,
+        token: accessToken,
         githubId: session.githubId,
         githubLogin: session.githubLogin,
       },
@@ -277,7 +279,7 @@ export async function GET(req: NextRequest) {
 
   if (accountId === session.githubId) {
     try {
-      const result = await fetchAccountSignals(session.accessToken, session.githubLogin, {
+      const result = await fetchAccountSignals(accessToken, session.githubLogin, {
         bypass,
         userId: session.githubId,
       });

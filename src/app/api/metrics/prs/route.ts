@@ -591,7 +591,7 @@ async function fetchReviewMetrics(token: string): Promise<ReviewMetrics> {
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const accessToken = await getGitHubAccessToken(req);
-  if (!accessToken) {
+  if (!accessToken || !session?.githubLogin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 

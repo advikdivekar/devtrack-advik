@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { getGitHubAccessToken } from "@/lib/server-github-token";
 import { GITHUB_API, GitHubCommitSearchItem } from "@/lib/github";
 import {
   calculateLanguagePercentages,
@@ -166,7 +167,8 @@ async function fetchTopLanguages(token: string, repos: string[]) {
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.accessToken || !session.githubLogin) {
+  const accessToken = await getGitHubAccessToken(req);
+  if (!accessToken || !session?.githubLogin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -176,7 +178,7 @@ export async function GET(req: NextRequest) {
   try {
     const { commits, contributionsByDate, hours, totalCommits } =
       await fetchYearCommits(
-        session.accessToken,
+        accessToken,
         session.githubLogin,
         startDate,
         endDate
@@ -185,9 +187,9 @@ export async function GET(req: NextRequest) {
       (repo) => repo !== "unknown"
     );
     const [topLanguages, prsMerged] = await Promise.all([
-      fetchTopLanguages(session.accessToken, repos),
+      fetchTopLanguages(accessToken, repos),
       fetchMergedPRCount(
-        session.accessToken,
+        accessToken,
         session.githubLogin,
         startDate,
         endDate
