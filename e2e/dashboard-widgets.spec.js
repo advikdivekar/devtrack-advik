@@ -88,6 +88,7 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify({ updated: 0, commitCount: 0 }),
     });
   });
+  const now = new Date().toISOString();
 
   await page.route("**/api/goals", async (route) => {
     if (route.request().method() === "POST") {
@@ -111,6 +112,17 @@ test.beforeEach(async ({ page }) => {
             unit: "commits",
             recurrence: "weekly",
             period_start: "2026-05-18",
+            last_synced_at: now,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/goals/sync**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
             last_synced_at: new Date().toISOString(),
           },
         ],
@@ -171,6 +183,7 @@ test.beforeEach(async ({ page }) => {
     "**/api/metrics/ci**",
     "**/api/streak/freeze**",
     "**/api/user/github-accounts**",
+    "**/api/integrations/jira**",
     "**/api/metrics/activity**",
     "**/api/metrics/commit-time**",
     "**/api/metrics/personal-records**",
@@ -178,6 +191,9 @@ test.beforeEach(async ({ page }) => {
     "**/api/metrics/pr-review-trend**",
     "**/api/metrics/inactive-repos**",
     "**/api/notifications**",
+    "**/api/local-coding/stats**",
+    "**/api/metrics/coding-time**",
+    "**/api/metrics/coding-activity-insights**",
   ];
 
 for (const pattern of metricRoutes) {
@@ -188,6 +204,15 @@ for (const pattern of metricRoutes) {
     });
   });
 }
+
+  await page.route("**/api/stream**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: "data: {}\n\n",
+    });
+  });
+
 
 });
 test("dashboard widgets render with mocked metrics", async ({ page }) => {
@@ -299,8 +324,41 @@ function mockMetricResponse(url) {
   if (url.includes("/api/streak/freeze")) {
     return { freezes: [] };
   }
+  if (url.includes("/api/integrations/jira")) {
+    return null;
+  }
   if (url.includes("/api/user/github-accounts")) {
     return { accounts: [] };
+  }
+  if (url.includes("/api/local-coding/stats")) {
+    return {
+      dailyData: [],
+      totals: { totalSeconds: 0, totalDays: 0, avgSecondsPerDay: 0 },
+      hasData: false,
+    };
+  }
+  if (url.includes("/api/metrics/coding-time")) {
+    return {
+      hasData: false,
+      not_configured: true,
+      todaysSeconds: 0,
+      totalSeconds7Days: 0,
+      chartData: [],
+      topLanguage: "",
+      topProject: "",
+    };
+  }
+  if (url.includes("/api/metrics/coding-activity-insights")) {
+    return {
+      hourlyCounts: [],
+      mostActiveHour: { hour: 0, count: 0, label: "" },
+      leastActiveHour: { hour: 0, count: 0, label: "" },
+      totalActivities: 0,
+      averageDailyCommits: 0,
+      consistencyScore: 0,
+      productivityLevel: "Low",
+      timezone: "UTC",
+    };
   }
   return {};
 }

@@ -9,6 +9,8 @@ import {
   withMetricsCache,
 } from "@/lib/metrics-cache";
 import { getGitHubAccessToken } from "@/lib/server-github-token";
+import { getAccountToken } from "@/lib/github-accounts";
+import { resolveAppUser } from "@/lib/resolve-user";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,29 @@ export async function GET(req: NextRequest) {
 
   const bypass = isMetricsCacheBypassed(req);
   const key = metricsCacheKey(session.githubId ?? session.githubLogin, "issues");
+  const accountId = req.nextUrl.searchParams.get("accountId");
+  const bypass = isMetricsCacheBypassed(req);
+
+  let token = session.accessToken;
+  let userId = session.githubId ?? session.githubLogin;
+
+  if (accountId && accountId !== session.githubId) {
+    if (!session.githubId) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userRow = await resolveAppUser(session.githubId, session.githubLogin);
+    if (!userRow) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const accountToken = await getAccountToken(userRow.id, accountId);
+    if (!accountToken) {
+      return Response.json({ error: "Account not found" }, { status: 404 });
+    }
+    token = accountToken;
+    userId = accountId;
+  }
+
+  const key = metricsCacheKey(userId, "issues");
 
   try {
     const metrics = await withMetricsCache(
@@ -28,6 +53,8 @@ export async function GET(req: NextRequest) {
       () => fetchIssuesMetrics(accessToken)
     );
 
+      () => fetchIssuesMetrics(token!)
+    );
     return Response.json(metrics);
   } catch {
     return Response.json({ error: "GitHub API error" }, { status: 502 });

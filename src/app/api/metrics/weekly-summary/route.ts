@@ -5,6 +5,9 @@ import { GITHUB_API } from "@/lib/github";
 import { isMetricsCacheBypassed, metricsCacheKey, withMetricsCache } from "@/lib/metrics-cache";
 import { dateDiffDays, toDateStr } from "@/lib/dateUtils";
 import { getGitHubAccessToken } from "@/lib/server-github-token";
+import { getAccountToken } from "@/lib/github-accounts";
+import { supabaseAdmin } from "@/lib/supabase";
+import { resolveAppUser } from "@/lib/resolve-user";
 
 export const dynamic = "force-dynamic";
 
@@ -110,8 +113,40 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const accountId = req.nextUrl.searchParams.get("accountId");
   const bypass = isMetricsCacheBypassed(req);
-  const key = metricsCacheKey(session.githubId ?? session.githubLogin, "weekly-summary" as any);
+
+  let token = session.accessToken;
+  let githubLogin = session.githubLogin;
+  let userId = session.githubId ?? session.githubLogin;
+
+  if (accountId && accountId !== session.githubId) {
+    if (!session.githubId) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userRow = await resolveAppUser(session.githubId, session.githubLogin);
+    if (!userRow) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const accountToken = await getAccountToken(userRow.id, accountId);
+    if (!accountToken) {
+      return Response.json({ error: "Account not found" }, { status: 404 });
+    }
+    const { data: accountRow } = await supabaseAdmin
+      .from("user_github_accounts")
+      .select("github_login")
+      .eq("user_id", userRow.id)
+      .eq("github_id", accountId)
+      .single();
+    if (!accountRow?.github_login) {
+      return Response.json({ error: "Account not found" }, { status: 404 });
+    }
+    token = accountToken;
+    githubLogin = accountRow.github_login;
+    userId = accountId;
+  }
+
+  const key = metricsCacheKey(userId, "weekly-summary" as any);
 
   try {
     // Cache TTL of 5 minutes (300 seconds).
@@ -131,11 +166,12 @@ export async function GET(req: NextRequest) {
       // per_page=100 covers most users in a single request; heavy committers
       // (>100 commits in 14 days) will see a capped but still representative count.
       const commitsRes = await fetch(
-        `${GITHUB_API}/search/commits?q=author:${session.githubLogin}+author-date:>=${fourteenDaysAgoStr}&per_page=100`,
+        `${GITHUB_API}/search/commits?q=author:${githubLogin}+author-date:>=${fourteenDaysAgoStr}&per_page=100`,
         {
           headers: {
             // OAuth token / PAT: required for the authenticated 30 req/min tier.
             Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${token}`,
             // Mandatory Accept header for the Commit Search endpoint.
             Accept: "application/vnd.github+json",
           },
@@ -194,6 +230,7 @@ export async function GET(req: NextRequest) {
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${token}`,
             Accept: "application/vnd.github+json",
           },
           cache: "no-store",
@@ -241,6 +278,7 @@ export async function GET(req: NextRequest) {
       // This is the most expensive part of this handler in terms of API quota usage.
       // The 5-minute cache TTL above ensures these calls only happen on cache misses.
       const streakDates = await fetchActiveDates(session.githubLogin!, accessToken);
+      const streakDates = await fetchActiveDates(githubLogin!, token!);
       const commitDelta = commitsThisWeek - commitsPrevWeek;
 
       return {

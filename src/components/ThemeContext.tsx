@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
 
 type Theme = "light" | "dark";
 
@@ -17,6 +17,8 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 function setThemeCookie(value: Theme) {
   document.cookie = `theme=${value}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`;
 }
+
+const useSafeLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -44,7 +46,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
     setTheme(systemDark ? "dark" : "light");
   }, []);
 
-  useEffect(() => {
+  useSafeLayoutEffect(() => {
     if (theme) {
       document.documentElement.classList.toggle("dark", theme === "dark");
       document.documentElement.style.colorScheme = theme;

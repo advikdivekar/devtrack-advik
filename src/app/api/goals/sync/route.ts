@@ -103,11 +103,19 @@ export async function POST(req: NextRequest) {
         }
       );
 
+      if (ghRes.status === 403 || ghRes.status === 429) {
+        const resetHeader = ghRes.headers.get("X-RateLimit-Reset");
+        const resetAt = resetHeader
+          ? new Date(Number(resetHeader) * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : null;
+        const message = resetAt
+          ? `GitHub rate limit reached. Sync will resume at ${resetAt}.`
+          : "GitHub rate limit reached. Please try again in a few minutes.";
+        return Response.json({ error: message, rateLimited: true }, { status: 429 });
+      }
+
       if (!ghRes.ok) {
-        return Response.json(
-          { error: "GitHub API error" },
-          { status: 502 }
-        );
+        return Response.json({ error: "GitHub API error" }, { status: 502 });
       }
 
       const ghData = (await ghRes.json()) as {
@@ -171,6 +179,15 @@ export async function POST(req: NextRequest) {
       }
       
       totalUpdated += prIds.length;
+    } else if (prRes.status === 403 || prRes.status === 429) {
+      const resetHeader = prRes.headers.get("X-RateLimit-Reset");
+      const resetAt = resetHeader
+        ? new Date(Number(resetHeader) * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : null;
+      const message = resetAt
+        ? `GitHub rate limit reached. Sync will resume at ${resetAt}.`
+        : "GitHub rate limit reached. Please try again in a few minutes.";
+      return Response.json({ error: message, rateLimited: true }, { status: 429 });
     } else {
       return Response.json({ error: "GitHub API error fetching PRs" }, { status: 502 });
     }
